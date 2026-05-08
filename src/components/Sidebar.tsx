@@ -57,6 +57,7 @@ export function Sidebar() {
   const [orderedTools, setOrderedTools] = useState<typeof installedTools>([]);
   const scenarioReorderQueueRef = useRef<Promise<void>>(Promise.resolve());
   const projectReorderQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const [projectsOpen, setProjectsOpen] = useState(true);
   const [globalWorkspaceOpen, setGlobalWorkspaceOpen] = useState(true);
 
   const installedTools = useMemo(() => tools.filter((t) => t.installed && t.enabled), [tools]);
@@ -358,11 +359,21 @@ export function Sidebar() {
           <div className="mx-0.5 mt-3.5 mb-2.5 border-t border-border-subtle" />
 
           {/* Projects */}
-          <div className="mb-1.5 px-2.5">
-            <span className="block truncate text-[12px] font-semibold tracking-[0.01em] text-muted whitespace-nowrap">
-              {t("sidebar.projects")}
-            </span>
+          <div className="mb-1.5 px-2.5 flex items-center gap-1">
+            <button
+              onClick={() => setProjectsOpen((v) => !v)}
+              className="flex min-w-0 flex-1 items-center gap-1 text-left outline-none"
+            >
+              {projectsOpen
+                ? <ChevronDown className="h-3 w-3 shrink-0 text-faint" />
+                : <ChevronRight className="h-3 w-3 shrink-0 text-faint" />}
+              <span className="truncate text-[12px] font-semibold tracking-[0.01em] text-muted whitespace-nowrap">
+                {t("sidebar.projects")}
+              </span>
+            </button>
           </div>
+          {projectsOpen && (
+          <>
           <DragDropContext onDragEnd={handleProjectDragEnd}>
             <Droppable droppableId="projects">
               {(droppableProvided) => (
@@ -469,6 +480,8 @@ export function Sidebar() {
             <Plus className="w-3.5 h-3.5" />
             {t("sidebar.addProject")}
           </button>
+          </>
+          )}
 
           {/* Divider */}
           <div className="mx-0.5 mt-3.5 mb-2.5 border-t border-border-subtle" />
