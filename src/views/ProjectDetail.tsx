@@ -31,7 +31,7 @@ import { BatchTagDialog } from "../components/BatchTagDialog";
 import { DetailSheet } from "../components/DetailSheet";
 import { AgentToggleSection, type AgentToggleItem } from "../components/AgentToggleSection";
 import { ProjectAgentDots } from "../components/ProjectAgentDots";
-import { PresetWorkspaceActionDialog } from "../components/PresetWorkspaceActionDialog";
+import { PresetBar } from "../components/PresetBar";
 import { SkillMarkdown } from "../components/SkillMarkdown";
 import { DocumentDiffViewer } from "../components/DocumentDiffViewer";
 import { getTagActiveColor, getTagColor } from "../lib/skillTags";
@@ -168,7 +168,6 @@ export function ProjectDetail() {
   const [togglingSkill, setTogglingSkill] = useState<string | null>(null);
   const [togglingDetailAgent, setTogglingDetailAgent] = useState<string | null>(null);
   const [showExportDialog, setShowExportDialog] = useState(false);
-  const [showPresetActionDialog, setShowPresetActionDialog] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProjectSkillGroup | null>(null);
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
   const [batchTagDialogOpen, setBatchTagDialogOpen] = useState(false);
@@ -817,13 +816,6 @@ export function ProjectDetail() {
         </div>
         <div className="relative flex shrink-0 items-center gap-2 pt-1">
           <button
-            onClick={() => setShowPresetActionDialog(true)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-background px-3 py-2 text-[13px] font-medium text-secondary transition-colors hover:border-border hover:bg-surface-hover"
-          >
-            <Layers className="h-3.5 w-3.5" />
-            {t("presetActions.button")}
-          </button>
-          <button
             onClick={() => {
               setShowExportDialog(true);
               dismissAddCallout();
@@ -955,6 +947,19 @@ export function ProjectDetail() {
             );
           })}
         </div>
+      )}
+
+      {/* Preset bar */}
+      {scenarios.length > 0 && selectedExportAgents.length > 0 && (
+        <PresetBar
+          presets={scenarios}
+          managedSkills={managedSkills}
+          agentKeys={selectedExportAgents}
+          existsInWorkspace={presetSkillExistsInProject}
+          onAddSkill={handleAddPresetSkillToProject}
+          onRemoveSkill={handleRemovePresetSkillFromProject}
+          onComplete={handlePresetActionComplete}
+        />
       )}
 
       {isMultiSelect && (
@@ -1367,20 +1372,6 @@ export function ProjectDetail() {
         allTags={allTags}
         onClose={() => setBatchTagDialogOpen(false)}
         onApply={handleBatchEditTags}
-      />
-
-      <PresetWorkspaceActionDialog
-        open={showPresetActionDialog}
-        title={t("presetActions.applyToProject")}
-        presets={scenarios}
-        managedSkills={managedSkills}
-        agents={exportTargets}
-        initialSelectedAgents={selectedExportAgents}
-        onClose={() => setShowPresetActionDialog(false)}
-        existsInWorkspace={presetSkillExistsInProject}
-        onAddSkill={handleAddPresetSkillToProject}
-        onRemoveSkill={handleRemovePresetSkillFromProject}
-        onComplete={handlePresetActionComplete}
       />
 
       {/* Export from Center Dialog */}

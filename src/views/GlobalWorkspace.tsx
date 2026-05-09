@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   ChevronRight,
   Globe,
-  Layers,
   LayoutGrid,
   List,
   Loader2,
@@ -23,7 +22,7 @@ import { useApp } from "../context/AppContext";
 import { useMultiSelect } from "../hooks/useMultiSelect";
 import { MultiSelectToolbar } from "../components/MultiSelectToolbar";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { PresetWorkspaceActionDialog } from "../components/PresetWorkspaceActionDialog";
+import { PresetBar } from "../components/PresetBar";
 import { getTagColor, getTagActiveColor } from "../lib/skillTags";
 import * as api from "../lib/tauri";
 import type { ManagedSkill, ToolInfo } from "../lib/tauri";
@@ -194,13 +193,17 @@ export function GlobalWorkspace() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [search, setSearch] = useState("");
   const [tagFilters, setTagFilters] = useState<Set<string>>(new Set());
-  const [showPresetDialog, setShowPresetDialog] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [batchRemoveConfirm, setBatchRemoveConfirm] = useState(false);
   const [batchRemoving, setBatchRemoving] = useState(false);
 
   const installedTools = useMemo(() => tools.filter((t) => t.installed && t.enabled), [tools]);
+
+  const presetBarAgentKeys = useMemo(
+    () => agentKey ? [agentKey] : installedTools.map((t) => t.key),
+    [agentKey, installedTools]
+  );
 
   const skillCountByAgent = useMemo(() => {
     const map: Record<string, number> = {};
@@ -331,17 +334,6 @@ export function GlobalWorkspace() {
     [agentKey, refreshManagedSkills, refreshTools, t]
   );
 
-  const globalWorkspaceAgents = useMemo(
-    () =>
-      installedTools.map((t) => ({
-        key: t.key,
-        display_name: t.display_name,
-        enabled: t.enabled,
-        installed: t.installed,
-      })),
-    [installedTools]
-  );
-
   const existsInGlobal = useCallback(
     (skill: ManagedSkill, agentK: string) =>
       skill.targets.some((target) => target.tool === agentK),
@@ -387,16 +379,21 @@ export function GlobalWorkspace() {
             </h1>
             <p className="app-page-subtitle">{t("globalWorkspace.subtitle")}</p>
           </div>
-          <div className="flex shrink-0 items-center gap-2 pt-1">
-            <button
-              onClick={() => setShowPresetDialog(true)}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-background px-3 py-2 text-[13px] font-medium text-secondary transition-colors hover:border-border hover:bg-surface-hover"
-            >
-              <Layers className="h-3.5 w-3.5" />
-              {t("presetActions.button")}
-            </button>
-          </div>
+          <div />
         </div>
+
+        {/* Preset bar — all agents scope */}
+        {scenarios.length > 0 && (
+          <PresetBar
+            presets={scenarios}
+            managedSkills={managedSkills}
+            agentKeys={presetBarAgentKeys}
+            existsInWorkspace={existsInGlobal}
+            onAddSkill={handlePresetAdd}
+            onRemoveSkill={handlePresetRemove}
+            onComplete={handlePresetComplete}
+          />
+        )}
 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {installedTools.map((tool) => {
@@ -419,20 +416,6 @@ export function GlobalWorkspace() {
             );
           })}
         </div>
-
-        <PresetWorkspaceActionDialog
-          open={showPresetDialog}
-          title={t("presetActions.applyToGlobal")}
-          presets={scenarios}
-          managedSkills={managedSkills}
-          agents={globalWorkspaceAgents}
-          initialSelectedAgents={installedTools.map((t) => t.key)}
-          onClose={() => setShowPresetDialog(false)}
-          existsInWorkspace={existsInGlobal}
-          onAddSkill={handlePresetAdd}
-          onRemoveSkill={handlePresetRemove}
-          onComplete={handlePresetComplete}
-        />
       </div>
     );
   }
@@ -450,13 +433,6 @@ export function GlobalWorkspace() {
           <p className="app-page-subtitle">{t("globalWorkspace.subtitle")}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2 pt-1">
-          <button
-            onClick={() => setShowPresetDialog(true)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-background px-3 py-2 text-[13px] font-medium text-secondary transition-colors hover:border-border hover:bg-surface-hover"
-          >
-            <Layers className="h-3.5 w-3.5" />
-            {t("presetActions.button")}
-          </button>
           <button
             onClick={() => setAddDialogOpen(true)}
             className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-2 text-[13px] font-medium text-white transition-colors hover:bg-accent-hover"
@@ -548,6 +524,19 @@ export function GlobalWorkspace() {
             );
           })}
         </div>
+      )}
+
+      {/* Preset bar */}
+      {scenarios.length > 0 && (
+        <PresetBar
+          presets={scenarios}
+          managedSkills={managedSkills}
+          agentKeys={presetBarAgentKeys}
+          existsInWorkspace={existsInGlobal}
+          onAddSkill={handlePresetAdd}
+          onRemoveSkill={handlePresetRemove}
+          onComplete={handlePresetComplete}
+        />
       )}
 
       {/* Multi-select toolbar */}
@@ -733,20 +722,6 @@ export function GlobalWorkspace() {
           })}
         </div>
       )}
-
-      <PresetWorkspaceActionDialog
-        open={showPresetDialog}
-        title={t("presetActions.applyToGlobal")}
-        presets={scenarios}
-        managedSkills={managedSkills}
-        agents={globalWorkspaceAgents}
-        initialSelectedAgents={agentKey ? [agentKey] : []}
-        onClose={() => setShowPresetDialog(false)}
-        existsInWorkspace={existsInGlobal}
-        onAddSkill={handlePresetAdd}
-        onRemoveSkill={handlePresetRemove}
-        onComplete={handlePresetComplete}
-      />
 
       {addDialogOpen && currentTool && (
         <AddSkillDialog

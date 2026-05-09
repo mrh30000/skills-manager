@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { cn } from "../utils";
 import type { ManagedSkill, Scenario } from "../lib/tauri";
 import { getScenarioIconOption } from "../lib/scenarioIcons";
+import { computePresetStatus } from "../lib/presetStatus";
 
 export interface PresetWorkspaceAgent {
   key: string;
@@ -34,30 +35,6 @@ interface Props {
   onAddSkill: (skill: ManagedSkill, agentKey: string) => Promise<void>;
   onRemoveSkill: (skill: ManagedSkill, agentKey: string) => Promise<void>;
   onComplete: (result: PresetWorkspaceActionResult) => Promise<void> | void;
-}
-
-type PresetStatus = "active" | "partial" | "inactive" | "empty";
-
-function computePresetStatus(
-  preset: Scenario,
-  skills: ManagedSkill[],
-  selectedAgents: string[],
-  existsInWorkspace: (skill: ManagedSkill, agentKey: string) => boolean
-): { status: PresetStatus; installed: number; total: number } {
-  const presetSkills = skills.filter((s) => s.scenario_ids.includes(preset.id));
-  if (presetSkills.length === 0 || selectedAgents.length === 0) {
-    return { status: "empty", installed: 0, total: 0 };
-  }
-  const total = presetSkills.length * selectedAgents.length;
-  let installed = 0;
-  for (const skill of presetSkills) {
-    for (const agentKey of selectedAgents) {
-      if (existsInWorkspace(skill, agentKey)) installed++;
-    }
-  }
-  if (installed === total) return { status: "active", installed, total };
-  if (installed === 0) return { status: "inactive", installed, total };
-  return { status: "partial", installed, total };
 }
 
 export function PresetWorkspaceActionDialog({

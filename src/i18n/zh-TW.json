@@ -672,6 +672,11 @@
     "activate": "啟用",
     "deactivate": "取消啟用"
   },
+  "presetBar": {
+    "shiftClickHint": "{{name}} · Shift+點擊直接切換",
+    "skillCount": "{{count}} 個 Skills",
+    "deactivateConfirm": "從 \"{{name}}\" 中移除全部 {{count}} 個已安裝 Skills？"
+  },
   "globalWorkspace": {
     "title": "全域工作區",
     "allAgents": "全部 Agents",

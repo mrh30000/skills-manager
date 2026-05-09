@@ -739,6 +739,11 @@
     "activate": "Activate",
     "deactivate": "Deactivate"
   },
+  "presetBar": {
+    "shiftClickHint": "{{name}} · Shift+click to toggle",
+    "skillCount": "{{count}} skills",
+    "deactivateConfirm": "Remove all {{count}} installed skills from \"{{name}}\"?"
+  },
   "globalWorkspace": {
     "title": "Global Workspace",
     "allAgents": "All Agents",

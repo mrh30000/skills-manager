@@ -739,6 +739,11 @@
     "activate": "激活",
     "deactivate": "取消激活"
   },
+  "presetBar": {
+    "shiftClickHint": "{{name}} · Shift+点击直接切换",
+    "skillCount": "{{count}} 个 Skills",
+    "deactivateConfirm": "从 \"{{name}}\" 中移除全部 {{count}} 个已安装 Skills？"
+  },
   "globalWorkspace": {
     "title": "全局工作区",
     "allAgents": "全部 Agents",
