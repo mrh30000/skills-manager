@@ -178,7 +178,7 @@
     "agentCount": "{{count}} agents",
     "ready": "Ready",
     "standby": "Standby",
-    "agentTogglesTitle": "Agent Toggles",
+    "agentTogglesTitle": "Global Workspace",
     "expandAgentToggles": "Expand",
     "collapseAgentToggles": "Collapse",
     "agentToggleEnabled": "{{agent}} enabled",
@@ -599,9 +599,10 @@
     "toastInstalled": "{{count}} skill(s) added",
     "toastFailed": "{{count}} skill(s) failed to add",
     "toastAddedToProject": "Added \"{{skill}}\" to {{project}}",
+    "toastRemovedFromProject": "Removed \"{{skill}}\" from {{project}}",
     "add": "Add",
     "installedShort": "Added",
-    "projectsTitle": "Projects",
+    "projectsTitle": "Project Workspaces",
     "projectsSummary": "{{installed}} / {{total}} installed",
     "errors": {
       "noTarget": "Select at least one target agent"
@@ -613,6 +614,7 @@
     },
     "tooltip": {
       "installed": "Already in the workspace",
+      "remove": "Click to remove from this agent",
       "conflict": "Rename the skill in your library first",
       "unavailable": "Select a target agent first"
     }

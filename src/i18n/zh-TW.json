@@ -115,7 +115,7 @@
     "presetCount": "{{count}} 個 Preset",
     "syncCoverage": "同步覆蓋",
     "syncSummary": "已同步 {{synced}} / {{total}}",
-    "agentTogglesTitle": "Agent 開關",
+    "agentTogglesTitle": "全域工作區",
     "expandAgentToggles": "展開",
     "collapseAgentToggles": "收起",
     "agentToggleNotInstalled": "未安裝",
@@ -540,9 +540,10 @@
     "toastInstalled": "已新增 {{count}} 個 Skill",
     "toastFailed": "有 {{count}} 個 Skill 新增失敗",
     "toastAddedToProject": "已將「{{skill}}」新增到 {{project}}",
+    "toastRemovedFromProject": "已從 {{project}} 移除「{{skill}}」",
     "add": "新增",
     "installedShort": "已新增",
-    "projectsTitle": "專案",
+    "projectsTitle": "專案工作區",
     "projectsSummary": "{{installed}} / {{total}} 已新增",
     "errors": {
       "noTarget": "請至少選擇一個目標 Agent"
@@ -554,6 +555,7 @@
     },
     "tooltip": {
       "installed": "已經在工作區中",
+      "remove": "點擊從此 Agent 移除",
       "conflict": "請先重新命名庫中的 Skill",
       "unavailable": "請先選擇目標 Agent"
     }
