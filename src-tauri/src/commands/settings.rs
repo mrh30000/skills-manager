@@ -23,6 +23,15 @@ pub async fn get_settings(
         .await?
 }
 
+/// Diagnostic-only: let the frontend write a named startup event with elapsed
+/// milliseconds into the backend log file. Used to correlate WebView2 boot,
+/// first paint, and refreshAppData timing with Rust-side startup logs when
+/// debugging slow launches (see issue #153).
+#[tauri::command]
+pub fn log_startup_event(label: String, elapsed_ms: u64) {
+    log::info!("frontend startup: {label} {elapsed_ms} ms");
+}
+
 #[tauri::command]
 pub async fn set_settings(
     app: tauri::AppHandle,

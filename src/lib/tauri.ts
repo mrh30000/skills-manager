@@ -433,6 +433,15 @@ export const checkLastPanic = () =>
 export const clearLastPanic = () =>
   invoke<void>("clear_last_panic");
 
+/**
+ * Diagnostic-only: write a named startup event with elapsed ms (from
+ * performance.timeOrigin) into the backend log file. Used to correlate
+ * WebView2 boot and frontend boot timing with Rust-side startup logs
+ * when debugging slow launches (see issue #153).
+ */
+export const logStartupEvent = (label: string, elapsedMs: number) =>
+  invoke<void>("log_startup_event", { label, elapsedMs: Math.round(elapsedMs) });
+
 // ── Git Backup ──
 
 export type GitUpstreamHealth =

@@ -182,7 +182,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     async function init() {
+      api.logStartupEvent("refresh_app_data_start", performance.now()).catch(() => {});
+      const refreshStart = performance.now();
       await refreshAppData();
+      api
+        .logStartupEvent("refresh_app_data_done", performance.now() - refreshStart)
+        .catch(() => {});
       // Apply saved text size on startup
       const savedSize = await api.getSettings("text_size").catch(() => null);
       if (savedSize) {

@@ -1,6 +1,7 @@
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 use tauri::State;
 
 use crate::core::error::AppError;
@@ -56,7 +57,10 @@ pub async fn get_tool_status(
 ) -> Result<Vec<ToolInfoDto>, AppError> {
     let store = store.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let result: Vec<ToolInfoDto> = tool_service::list_tool_info(&store)
+        let start = Instant::now();
+        let infos = tool_service::list_tool_info(&store);
+        let count = infos.len();
+        let result: Vec<ToolInfoDto> = infos
             .into_iter()
             .map(|info: ToolInfo| ToolInfoDto {
                 key: info.key,
@@ -69,6 +73,10 @@ pub async fn get_tool_status(
                 project_relative_skills_dir: info.project_relative_skills_dir,
             })
             .collect();
+        log::info!(
+            "get_tool_status: {count} tools in {} ms",
+            start.elapsed().as_millis()
+        );
         Ok(result)
     })
     .await?

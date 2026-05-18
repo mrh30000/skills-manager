@@ -1,6 +1,7 @@
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 use tauri::State;
 
 use crate::core::{
@@ -44,21 +45,27 @@ pub async fn get_presets(
 ) -> Result<Vec<PresetDto>, AppError> {
     let store = store.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let start = Instant::now();
         let scenarios = store.get_all_scenarios().map_err(AppError::db)?;
+        let count = scenarios.len();
         let mut result = Vec::new();
         for s in scenarios {
-            let count = store.count_skills_for_scenario(&s.id).unwrap_or(0);
+            let skill_count = store.count_skills_for_scenario(&s.id).unwrap_or(0);
             result.push(PresetDto {
                 id: s.id,
                 name: s.name,
                 description: s.description,
                 icon: s.icon,
                 sort_order: s.sort_order,
-                skill_count: count,
+                skill_count,
                 created_at: s.created_at,
                 updated_at: s.updated_at,
             });
         }
+        log::info!(
+            "get_presets: {count} presets in {} ms",
+            start.elapsed().as_millis()
+        );
         Ok(result)
     })
     .await?
