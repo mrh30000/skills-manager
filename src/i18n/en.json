@@ -6,6 +6,7 @@
     "dashboard": "Dashboard",
     "mySkills": "Library",
     "globalWorkspace": "Global Workspace",
+    "lobsterAgents": "Lobster Agents",
     "installSkills": "Install Skills",
     "presets": "Presets",
     "newPreset": "New Preset",
@@ -800,6 +801,12 @@
     "shiftClickHint": "{{name}} · Shift+click to toggle",
     "skillCount": "{{count}} skills",
     "deactivateConfirm": "Remove all {{count}} installed skills from \"{{name}}\"?"
+  },
+  "lobsterWorkspace": {
+    "title": "Lobster Agents",
+    "allAgents": "All Lobster Agents",
+    "noAgents": "No Lobster agents installed",
+    "noAgentsHint": "Install OpenClaw, Hermes Agent, or another lobster-class personal assistant to see it here."
   },
   "globalWorkspace": {
     "title": "Global Workspace",

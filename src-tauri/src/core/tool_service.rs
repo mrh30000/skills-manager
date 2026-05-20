@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use super::{
     error::AppError,
     skill_store::SkillStore,
-    tool_adapters::{self, CustomToolDef},
+    tool_adapters::{self, CustomToolDef, ToolCategory},
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -17,6 +17,7 @@ pub struct ToolInfo {
     pub is_custom: bool,
     pub has_path_override: bool,
     pub project_relative_skills_dir: Option<String>,
+    pub category: ToolCategory,
 }
 
 pub fn get_disabled_tools(store: &SkillStore) -> Vec<String> {
@@ -194,6 +195,7 @@ pub fn list_tool_info(store: &SkillStore) -> Vec<ToolInfo> {
                     Some(project_dir.to_string())
                 }
             },
+            category: adapter.category,
         })
         .collect();
 

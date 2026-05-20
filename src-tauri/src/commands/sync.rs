@@ -319,6 +319,7 @@ mod tests {
             display_name: "Test Agent".to_string(),
             skills_dir: target_base.to_string_lossy().to_string(),
             project_relative_skills_dir: None,
+            category: Default::default(),
         }];
         store
             .set_setting(

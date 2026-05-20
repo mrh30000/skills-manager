@@ -26,7 +26,7 @@ import { AddProjectDialog } from "./AddProjectDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AgentIcon } from "./AgentIcon";
 import * as api from "../lib/tauri";
-import type { SyncHealth } from "../lib/tauri";
+import type { SyncHealth, ToolCategory, ToolInfo } from "../lib/tauri";
 import { getPresetIconOption } from "../lib/presetIcons";
 
 function getSyncHealthIndicator(health: SyncHealth, skillCount: number): { color: string; title: string } | null {
@@ -54,14 +54,24 @@ export function Sidebar() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleteProjectTarget, setDeleteProjectTarget] = useState<{ id: string; name: string } | null>(null);
   const installedTools = useMemo(() => tools.filter((t) => t.installed && t.enabled), [tools]);
+  const installedCodingTools = useMemo(
+    () => installedTools.filter((t) => t.category === "coding"),
+    [installedTools]
+  );
+  const installedLobsterTools = useMemo(
+    () => installedTools.filter((t) => t.category === "lobster"),
+    [installedTools]
+  );
   const [orderedPresets, setOrderedPresets] = useState(presets);
   const [orderedProjects, setOrderedProjects] = useState(projects);
-  const [orderedTools, setOrderedTools] = useState(installedTools);
+  const [orderedCodingTools, setOrderedCodingTools] = useState(installedCodingTools);
+  const [orderedLobsterTools, setOrderedLobsterTools] = useState(installedLobsterTools);
   const presetReorderQueueRef = useRef<Promise<void>>(Promise.resolve());
   const projectReorderQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [presetsOpen, setPresetsOpen] = useState(true);
   const [projectsOpen, setProjectsOpen] = useState(true);
   const [globalWorkspaceOpen, setGlobalWorkspaceOpen] = useState(true);
+  const [lobsterWorkspaceOpen, setLobsterWorkspaceOpen] = useState(true);
 
   const globalSkillsByAgent = useMemo(() => {
     const map: Record<string, number> = {};
@@ -80,13 +90,25 @@ export function Sidebar() {
     const storedOrder: string[] = stored ? JSON.parse(stored) : [];
     const sorted = [
       ...storedOrder.flatMap((key) => {
-        const t = installedTools.find((t) => t.key === key);
+        const t = installedCodingTools.find((t) => t.key === key);
         return t ? [t] : [];
       }),
-      ...installedTools.filter((t) => !storedOrder.includes(t.key)),
+      ...installedCodingTools.filter((t) => !storedOrder.includes(t.key)),
     ];
-    setOrderedTools(sorted);
-  }, [installedTools]);
+    setOrderedCodingTools(sorted);
+  }, [installedCodingTools]);
+  useEffect(() => {
+    const stored = localStorage.getItem("skills-manager:lobster-tool-order");
+    const storedOrder: string[] = stored ? JSON.parse(stored) : [];
+    const sorted = [
+      ...storedOrder.flatMap((key) => {
+        const t = installedLobsterTools.find((t) => t.key === key);
+        return t ? [t] : [];
+      }),
+      ...installedLobsterTools.filter((t) => !storedOrder.includes(t.key)),
+    ];
+    setOrderedLobsterTools(sorted);
+  }, [installedLobsterTools]);
 
   const handleDragEnd = (result: DropResult) => {
     if (!result.destination || result.destination.index === result.source.index) return;
@@ -126,13 +148,19 @@ export function Sidebar() {
       });
   };
 
-  const handleToolDragEnd = (result: DropResult) => {
+  const handleToolDragEnd = (category: ToolCategory) => (result: DropResult) => {
     if (!result.destination || result.destination.index === result.source.index) return;
-    const reordered = [...orderedTools];
+    const current = category === "lobster" ? orderedLobsterTools : orderedCodingTools;
+    const reordered = [...current];
     const [moved] = reordered.splice(result.source.index, 1);
     reordered.splice(result.destination.index, 0, moved);
-    setOrderedTools(reordered);
-    localStorage.setItem("skills-manager:tool-order", JSON.stringify(reordered.map((t) => t.key)));
+    if (category === "lobster") {
+      setOrderedLobsterTools(reordered);
+      localStorage.setItem("skills-manager:lobster-tool-order", JSON.stringify(reordered.map((t) => t.key)));
+    } else {
+      setOrderedCodingTools(reordered);
+      localStorage.setItem("skills-manager:tool-order", JSON.stringify(reordered.map((t) => t.key)));
+    }
   };
 
   const NAV_ITEMS = [
@@ -204,6 +232,144 @@ export function Sidebar() {
       navigate("/");
     }
     toast.success(t("project.removed"));
+  };
+
+  // Renders one workspace category section (Global Workspace for coding agents,
+  // Lobster Agents for lobster agents). Both sections share identical UX —
+  // collapsible heading, "All Agents" overview entry, and a drag-orderable list.
+  const renderToolGroup = (group: {
+    category: ToolCategory;
+    headingLabel: string;
+    allAgentsLabel: string;
+    emptyLabel: string;
+    basePath: string;
+    droppableId: string;
+    tools: ToolInfo[];
+    isOpen: boolean;
+    onToggle: () => void;
+    hideWhenEmpty: boolean;
+  }) => {
+    if (group.hideWhenEmpty && group.tools.length === 0) return null;
+    return (
+      <>
+        <div className="mb-1.5 px-2.5 flex items-center gap-1">
+          <button
+            onClick={group.onToggle}
+            className="flex min-w-0 flex-1 items-center gap-1 text-left outline-none"
+          >
+            {group.isOpen
+              ? <ChevronDown className="h-3 w-3 shrink-0 text-faint" />
+              : <ChevronRight className="h-3 w-3 shrink-0 text-faint" />}
+            <span className="truncate text-[12px] font-semibold tracking-[0.01em] text-muted whitespace-nowrap">
+              {group.headingLabel}
+            </span>
+          </button>
+        </div>
+        {group.isOpen && (
+          <>
+            {/* Pinned overview item */}
+            {(() => {
+              const isActive = location.pathname === group.basePath;
+              return (
+                <Link
+                  to={group.basePath}
+                  className={cn(
+                    "mb-0.5 flex items-center gap-2 px-2.5 py-[7px] rounded-[5px] text-sm transition-colors outline-none",
+                    isActive
+                      ? "bg-surface-active font-medium text-primary"
+                      : "text-tertiary hover:text-secondary hover:bg-surface-hover"
+                  )}
+                >
+                  <span className={cn(
+                    "flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded border",
+                    isActive
+                      ? "border-accent/30 bg-accent/10 text-accent"
+                      : "border-border bg-surface text-muted"
+                  )}>
+                    <Globe className="h-3 w-3" />
+                  </span>
+                  <span className="flex-1 truncate">{group.allAgentsLabel}</span>
+                </Link>
+              );
+            })()}
+            {group.tools.length === 0 ? (
+              <p className="px-5 py-1.5 text-[12px] text-faint">{group.emptyLabel}</p>
+            ) : (
+              <DragDropContext onDragEnd={handleToolDragEnd(group.category)}>
+                <Droppable droppableId={group.droppableId}>
+                  {(droppableProvided) => (
+                    <div
+                      className="space-y-0.5"
+                      ref={droppableProvided.innerRef}
+                      {...droppableProvided.droppableProps}
+                    >
+                      {group.tools.map((tool, index) => {
+                        const skillCount = globalSkillsByAgent[tool.key] ?? 0;
+                        const isActive = location.pathname === `${group.basePath}/${tool.key}`;
+                        return (
+                          <Draggable key={tool.key} draggableId={tool.key} index={index}>
+                            {(provided) => (
+                              <div
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                className={cn(
+                                  "group relative flex items-center rounded-[5px] transition-colors",
+                                  isActive ? "bg-surface-active" : "hover:bg-surface-hover"
+                                )}
+                              >
+                                <button
+                                  onClick={() => navigate(`${group.basePath}/${tool.key}`)}
+                                  className={cn(
+                                    "flex min-w-0 flex-1 items-center gap-2 px-2.5 py-[7px] text-left text-sm leading-5 outline-none",
+                                    isActive ? "font-medium text-primary" : "text-tertiary group-hover:text-secondary"
+                                  )}
+                                >
+                                  <AgentIcon
+                                    agentKey={tool.key}
+                                    displayName={tool.display_name}
+                                    className={cn(
+                                      "h-[20px] w-[20px] rounded border transition-colors",
+                                      isActive ? "border-accent/30 bg-accent/10" : "group-hover:border-border"
+                                    )}
+                                  />
+                                  <span className="flex-1 truncate">{tool.display_name}</span>
+                                  <span className="ml-auto flex h-[18px] w-[32px] shrink-0 items-center justify-end group-hover:hidden">
+                                    {skillCount > 0 && (
+                                      <span className={cn(
+                                        "min-w-[18px] rounded-full px-1.5 text-center text-[12px] font-medium leading-[18px] tabular-nums",
+                                        isActive ? "bg-accent-bg text-accent-light" : "bg-surface-hover text-muted"
+                                      )}>
+                                        {skillCount}
+                                      </span>
+                                    )}
+                                  </span>
+                                </button>
+                                <div className={cn(
+                                  "absolute right-1 flex items-center rounded-[3px] invisible opacity-0 transition-opacity group-hover:visible group-hover:opacity-100",
+                                  isActive ? "bg-surface-active" : "bg-surface-hover"
+                                )}>
+                                  <div
+                                    {...provided.dragHandleProps}
+                                    className="rounded p-1 text-faint cursor-grab active:cursor-grabbing"
+                                  >
+                                    <GripVertical className="h-3 w-3" />
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </Draggable>
+                        );
+                      })}
+                      {droppableProvided.placeholder}
+                    </div>
+                  )}
+                </Droppable>
+              </DragDropContext>
+            )}
+          </>
+        )}
+      </>
+    );
   };
 
   return (
@@ -372,121 +538,38 @@ export function Sidebar() {
           {/* Divider */}
           <div className="mx-0.5 mt-3.5 mb-2.5 border-t border-border-subtle" />
 
-          {/* ── Global Workspace ── */}
-          <div className="mb-1.5 px-2.5 flex items-center gap-1">
-            <button
-              onClick={() => setGlobalWorkspaceOpen((v) => !v)}
-              className="flex min-w-0 flex-1 items-center gap-1 text-left outline-none"
-            >
-              {globalWorkspaceOpen
-                ? <ChevronDown className="h-3 w-3 shrink-0 text-faint" />
-                : <ChevronRight className="h-3 w-3 shrink-0 text-faint" />}
-              <span className="truncate text-[12px] font-semibold tracking-[0.01em] text-muted whitespace-nowrap">
-                {t("sidebar.globalWorkspace")}
-              </span>
-            </button>
-          </div>
-          {globalWorkspaceOpen && (
+          {renderToolGroup({
+            category: "coding",
+            headingLabel: t("sidebar.globalWorkspace"),
+            allAgentsLabel: t("globalWorkspace.allAgents"),
+            emptyLabel: t("globalWorkspace.noAgents"),
+            basePath: "/global-workspace",
+            droppableId: "global-workspace-tools",
+            tools: orderedCodingTools,
+            isOpen: globalWorkspaceOpen,
+            onToggle: () => setGlobalWorkspaceOpen((v) => !v),
+            // Always show the Global Workspace section (even when empty) so users
+            // with no detected coding agents still see the "All Agents" entry.
+            hideWhenEmpty: false,
+          })}
+
+          {installedLobsterTools.length > 0 && (
             <>
-              {/* Pinned overview item */}
-              {(() => {
-                const isActive = location.pathname === "/global-workspace";
-                return (
-                  <Link
-                    to="/global-workspace"
-                    className={cn(
-                      "mb-0.5 flex items-center gap-2 px-2.5 py-[7px] rounded-[5px] text-sm transition-colors outline-none",
-                      isActive
-                        ? "bg-surface-active font-medium text-primary"
-                        : "text-tertiary hover:text-secondary hover:bg-surface-hover"
-                    )}
-                  >
-                    <span className={cn(
-                      "flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded border",
-                      isActive
-                        ? "border-accent/30 bg-accent/10 text-accent"
-                        : "border-border bg-surface text-muted"
-                    )}>
-                      <Globe className="h-3 w-3" />
-                    </span>
-                    <span className="flex-1 truncate">{t("globalWorkspace.allAgents")}</span>
-                  </Link>
-                );
-              })()}
-              {orderedTools.length === 0 ? (
-                <p className="px-5 py-1.5 text-[12px] text-faint">{t("globalWorkspace.noAgents")}</p>
-              ) : (
-                <DragDropContext onDragEnd={handleToolDragEnd}>
-                  <Droppable droppableId="global-workspace-tools">
-                    {(droppableProvided) => (
-                      <div
-                        className="space-y-0.5"
-                        ref={droppableProvided.innerRef}
-                        {...droppableProvided.droppableProps}
-                      >
-                        {orderedTools.map((tool, index) => {
-                          const skillCount = globalSkillsByAgent[tool.key] ?? 0;
-                          const isActive = location.pathname === `/global-workspace/${tool.key}`;
-                          return (
-                            <Draggable key={tool.key} draggableId={tool.key} index={index}>
-                              {(provided) => (
-                                <div
-                                  ref={provided.innerRef}
-                                  {...provided.draggableProps}
-                                  className={cn(
-                                    "group relative flex items-center rounded-[5px] transition-colors",
-                                    isActive ? "bg-surface-active" : "hover:bg-surface-hover"
-                                  )}
-                                >
-                                  <button
-                                    onClick={() => navigate(`/global-workspace/${tool.key}`)}
-                                    className={cn(
-                                      "flex min-w-0 flex-1 items-center gap-2 px-2.5 py-[7px] text-left text-sm leading-5 outline-none",
-                                      isActive ? "font-medium text-primary" : "text-tertiary group-hover:text-secondary"
-                                    )}
-                                  >
-                                    <AgentIcon
-                                      agentKey={tool.key}
-                                      displayName={tool.display_name}
-                                      className={cn(
-                                        "h-[20px] w-[20px] rounded border transition-colors",
-                                        isActive ? "border-accent/30 bg-accent/10" : "group-hover:border-border"
-                                      )}
-                                    />
-                                    <span className="flex-1 truncate">{tool.display_name}</span>
-                                    <span className="ml-auto flex h-[18px] w-[32px] shrink-0 items-center justify-end group-hover:hidden">
-                                      {skillCount > 0 && (
-                                        <span className={cn(
-                                          "min-w-[18px] rounded-full px-1.5 text-center text-[12px] font-medium leading-[18px] tabular-nums",
-                                          isActive ? "bg-accent-bg text-accent-light" : "bg-surface-hover text-muted"
-                                        )}>
-                                          {skillCount}
-                                        </span>
-                                      )}
-                                    </span>
-                                  </button>
-                                  <div className={cn(
-                                    "absolute right-1 flex items-center rounded-[3px] invisible opacity-0 transition-opacity group-hover:visible group-hover:opacity-100",
-                                    isActive ? "bg-surface-active" : "bg-surface-hover"
-                                  )}>
-                                    <div
-                                      {...provided.dragHandleProps}
-                                      className="rounded p-1 text-faint cursor-grab active:cursor-grabbing"
-                                    >
-                                      <GripVertical className="h-3 w-3" />
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                            </Draggable>
-                          );
-                        })}
-                        {droppableProvided.placeholder}
-                      </div>
-                    )}
-                  </Droppable>
-                </DragDropContext>
-              )}
+              {/* Divider */}
+              <div className="mx-0.5 mt-3.5 mb-2.5 border-t border-border-subtle" />
+
+              {renderToolGroup({
+                category: "lobster",
+                headingLabel: t("sidebar.lobsterAgents"),
+                allAgentsLabel: t("lobsterWorkspace.allAgents"),
+                emptyLabel: t("lobsterWorkspace.noAgents"),
+                basePath: "/lobster-workspace",
+                droppableId: "lobster-workspace-tools",
+                tools: orderedLobsterTools,
+                isOpen: lobsterWorkspaceOpen,
+                onToggle: () => setLobsterWorkspaceOpen((v) => !v),
+                hideWhenEmpty: true,
+              })}
             </>
           )}
 

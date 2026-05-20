@@ -6,6 +6,7 @@
     "dashboard": "Dashboard",
     "mySkills": "技能库",
     "globalWorkspace": "全局工作区",
+    "lobsterAgents": "龙虾 Agent",
     "installSkills": "安装 Skills",
     "presets": "Preset",
     "newPreset": "新建 Preset",
@@ -800,6 +801,12 @@
     "shiftClickHint": "{{name}} · Shift+点击直接切换",
     "skillCount": "{{count}} 个 Skills",
     "deactivateConfirm": "从 \"{{name}}\" 中移除全部 {{count}} 个已安装 Skills？"
+  },
+  "lobsterWorkspace": {
+    "title": "龙虾 Agent",
+    "allAgents": "全部龙虾 Agent",
+    "noAgents": "未安装任何龙虾 Agent",
+    "noAgentsHint": "安装 OpenClaw、Hermes Agent 或其他龙虾类个人助手后会自动出现在这里。"
   },
   "globalWorkspace": {
     "title": "全局工作区",

@@ -11,7 +11,7 @@ use crate::core::scenario_service::sync_scenario_skills;
 use crate::core::skill_store::SkillStore;
 use crate::core::sync_engine;
 use crate::core::timing::should_log_first_or_slow;
-use crate::core::tool_adapters::{self, CustomToolDef};
+use crate::core::tool_adapters::{self, CustomToolDef, ToolCategory};
 use crate::core::tool_service::{
     self, ToolInfo, get_custom_tool_paths, get_custom_tools, get_disabled_tools, get_tool_order,
     normalize_project_relative_skills_dir_input, normalize_skills_dir_input, set_custom_tool_paths,
@@ -28,6 +28,7 @@ pub struct ToolInfoDto {
     pub is_custom: bool,
     pub has_path_override: bool,
     pub project_relative_skills_dir: Option<String>,
+    pub category: ToolCategory,
 }
 
 /// Sync active scenario skills to a single tool.
@@ -75,6 +76,7 @@ pub async fn get_tool_status(
                 is_custom: info.is_custom,
                 has_path_override: info.has_path_override,
                 project_relative_skills_dir: info.project_relative_skills_dir,
+                category: info.category,
             })
             .collect();
         let elapsed_ms = start.elapsed().as_millis();
@@ -279,6 +281,7 @@ pub async fn add_custom_tool(
             display_name,
             skills_dir,
             project_relative_skills_dir,
+            category: Default::default(),
         });
         set_custom_tools(&store, &customs)?;
         reconcile_tool_sync_after_path_change(&store, &key);
@@ -381,6 +384,7 @@ mod tests {
             display_name: "Test Agent".to_string(),
             skills_dir: target_base.to_string_lossy().to_string(),
             project_relative_skills_dir: None,
+            category: Default::default(),
         }];
         store
             .set_setting(

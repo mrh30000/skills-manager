@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 
 // ── Types ──
 
+export type ToolCategory = "coding" | "lobster";
+
 export interface ToolInfo {
   key: string;
   display_name: string;
@@ -11,6 +13,7 @@ export interface ToolInfo {
   is_custom: boolean;
   has_path_override: boolean;
   project_relative_skills_dir: string | null;
+  category: ToolCategory;
 }
 
 export interface ManagedSkill {

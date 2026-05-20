@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Navigate } from "react-router-dom";
 import {
   ChevronRight,
   Download,
@@ -30,6 +30,7 @@ import type { ManagedSkill, ProjectSkill } from "../lib/tauri";
 import { getErrorMessage } from "../lib/error";
 import { getTagActiveColor, getTagColor, UNTAGGED_FILTER } from "../lib/skillTags";
 import { AddSkillsSheet } from "../components/AddSkillsSheet";
+import type { WorkspaceConfig } from "./workspaceConfigs";
 
 function compactHomePath(path: string) {
   return path.replace(/^\/Users\/[^/]+/, "~");
@@ -208,7 +209,7 @@ function getLocalStatusMeta(t: (key: string) => string, status: ProjectSkill["sy
   }
 }
 
-export function GlobalWorkspace() {
+export function WorkspaceView({ config }: { config: WorkspaceConfig }) {
   const { agentKey } = useParams<{ agentKey?: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -233,11 +234,26 @@ export function GlobalWorkspace() {
   const [deleteLocalConfirmSkill, setDeleteLocalConfirmSkill] = useState<ProjectSkill | null>(null);
   const localDetailRequestRef = useRef(0);
 
-  const installedTools = useMemo(() => tools.filter((t) => t.installed && t.enabled), [tools]);
+  // Cross-category redirect: a deep link like /global-workspace/openclaw should
+  // land on /lobster-workspace/openclaw. Compute it before any filtering so a
+  // category mismatch doesn't briefly render "agent not found".
+  const requestedTool = useMemo(
+    () => (agentKey ? tools.find((t) => t.key === agentKey) ?? null : null),
+    [agentKey, tools]
+  );
+  const needsRedirect =
+    !!agentKey &&
+    !!requestedTool &&
+    requestedTool.category !== config.category;
+  const redirectTarget = needsRedirect && requestedTool
+    ? (requestedTool.category === "lobster"
+        ? `/lobster-workspace/${requestedTool.key}`
+        : `/global-workspace/${requestedTool.key}`)
+    : null;
 
-  const presetBarAgentKeys = useMemo(
-    () => agentKey ? [agentKey] : installedTools.map((t) => t.key),
-    [agentKey, installedTools]
+  const installedTools = useMemo(
+    () => tools.filter((t) => t.installed && t.enabled && t.category === config.category),
+    [tools, config.category]
   );
 
   const skillCountByAgent = useMemo(() => {
@@ -251,8 +267,18 @@ export function GlobalWorkspace() {
   }, [installedTools, managedSkills]);
 
   const currentTool = useMemo(
-    () => (agentKey ? tools.find((t) => t.key === agentKey) ?? null : null),
-    [agentKey, tools]
+    () => (agentKey ? installedTools.find((t) => t.key === agentKey) ?? null : null),
+    [agentKey, installedTools]
+  );
+
+  // Preset actions must target what is actually rendered: a single agent when
+  // `currentTool` resolves, otherwise every installed agent in this category.
+  // Falling back to the raw URL `agentKey` would let a stale deep link (a
+  // bookmarked route for a since-disabled or uninstalled agent) mutate the
+  // hidden agent while the overview is shown.
+  const presetBarAgentKeys = useMemo(
+    () => (currentTool ? [currentTool.key] : installedTools.map((t) => t.key)),
+    [currentTool, installedTools]
   );
   const currentToolKey = currentTool?.key ?? null;
 
@@ -277,9 +303,6 @@ export function GlobalWorkspace() {
     }
   }, [currentToolKey, t]);
 
-  // Fetch agent-local skills once per agent. Guarding on the key (not the
-  // loadLocalSkills identity) keeps this from re-firing every time the tools
-  // array is refetched or React StrictMode re-runs the effect.
   const loadedAgentKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!currentToolKey) {
@@ -290,12 +313,6 @@ export function GlobalWorkspace() {
     if (loadedAgentKeyRef.current === currentToolKey) return;
     loadedAgentKeyRef.current = currentToolKey;
     void loadLocalSkills();
-    // On unmount or agent switch, invalidate this in-flight load so its result
-    // (or error toast) can't land on the next page / an unmounted component.
-    // Also clear loadedAgentKeyRef — otherwise a StrictMode remount (or any
-    // quick remount of the same agent) sees the ref still pointing at this
-    // key, skips the reload, and the invalidated in-flight request's finally
-    // block bails out without resetting `localSkillsLoading` → stuck spinner.
     return () => {
       localSkillsRequestRef.current += 1;
       loadedAgentKeyRef.current = null;
@@ -615,6 +632,10 @@ export function GlobalWorkspace() {
     );
   };
 
+  if (redirectTarget) {
+    return <Navigate to={redirectTarget} replace />;
+  }
+
   if (installedTools.length === 0) {
     return (
       <div className="app-page">
@@ -622,9 +643,9 @@ export function GlobalWorkspace() {
           <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-surface-hover">
             <Globe className="h-5 w-5 text-muted" />
           </div>
-          <p className="text-[13px] font-medium text-secondary">{t("globalWorkspace.noAgents")}</p>
+          <p className="text-[13px] font-medium text-secondary">{t(config.i18nKeys.noAgents)}</p>
           <p className="mt-1 max-w-[260px] text-[12px] leading-relaxed text-muted">
-            {t("globalWorkspace.noAgentsHint")}
+            {t(config.i18nKeys.noAgentsHint)}
           </p>
         </div>
       </div>
@@ -639,7 +660,7 @@ export function GlobalWorkspace() {
             <div className="min-w-0 flex-1">
               <h1 className="app-page-title flex items-center gap-2.5">
                 <Globe className="h-5 w-5 text-accent" />
-                {t("globalWorkspace.title")}
+                {t(config.i18nKeys.title)}
                 <span className="app-badge">{installedTools.length}</span>
               </h1>
             </div>
@@ -664,7 +685,7 @@ export function GlobalWorkspace() {
             return (
               <button
                 key={tool.key}
-                onClick={() => navigate(`/global-workspace/${tool.key}`)}
+                onClick={() => navigate(`${config.basePath}/${tool.key}`)}
                 className="app-panel group flex items-center gap-3 p-3.5 text-left transition-all hover:border-border hover:bg-surface-hover"
               >
                 <AgentIcon
@@ -1019,3 +1040,4 @@ export function GlobalWorkspace() {
     </div>
   );
 }
+
