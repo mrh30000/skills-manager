@@ -5,10 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.22.0] - 2026-05-21
 
-### Added
-- **Skill auto-update check** — A new **Settings → Skill Auto-Update** section runs a background update check every 6 hours / daily / weekly (off by default). When upstream changes are detected, a toast and the **Update All** badge in My Skills light up; skill contents are never modified silently, you still confirm the actual update. The same panel shows the last-check timestamp and a **Check Now** button.
+### User-facing
+- **Skill auto-update** — New **Settings → Skill Auto-Update** section. Pick a background check frequency (hourly / every 6 hours / daily) so the "update available" badge stays current while the app is open, and optionally enable **Apply updates automatically** to pull and apply detected upstream updates without a manual click — off by default; when off, updates are only flagged in the Library. The redundant in-Settings "Check Now" button was removed, since the Library toolbar already has "Check All".
+- **Lobster Agents** now form their own group in the sidebar, separate from coding agents.
+- Applying a preset from the tray menu is no longer blocked while a skill update check is running.
+- **Presets are curation labels** — Adding or removing a skill from a preset no longer immediately changes what is deployed to your agents; deployment happens only when you explicitly apply a preset.
+
+### Developer & governance
+- Reworked the preset model around curation-label semantics: membership edits are decoupled from disk sync, with explicit batch apply modes and a workspace-scoped tray apply path.
+- The background auto-update scheduler polls every 15 minutes to honor the shortest (hourly) interval and to pick up settings changes promptly.
+- Tray preset-apply and update-check use independent locks so the two operations no longer block each other.
 
 ## [1.21.0] - 2026-05-18
 
