@@ -438,11 +438,11 @@ export function Settings() {
     await api.setSettings("auto_update_apply", value);
   };
 
-  // Keep the last-run timestamp in sync with the background scheduler so
-  // the user does not see a stale value if they leave Settings open. The
-  // Rust scheduler emits this event BEFORE it persists `last_run_at`, so
-  // we read the timestamp directly from the payload rather than re-querying
-  // the DB (which would race the persist).
+  // Keep the last-run timestamp in sync with both the background scheduler
+  // and the tray's manual "Check for skill updates" so the user doesn't see
+  // a stale value if Settings is open. Backend always persists `last_run_at`
+  // first and then emits with the same `ran_at`, so reading from the payload
+  // avoids a follow-up DB roundtrip.
   useEffect(() => {
     type AutoUpdatedPayload = { ran_at?: string };
     const unlistenPromise = listen<AutoUpdatedPayload>("skills-auto-updated", (event) => {

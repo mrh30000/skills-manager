@@ -37,7 +37,7 @@ pub fn start<R: Runtime>(app: AppHandle<R>, store: Arc<SkillStore>) {
             if let Some(interval) = read_interval(&store) {
                 if is_due(read_last_run(&store), interval) {
                     match run_round(&app, &store).await {
-                        Ok(()) => write_last_run(&store, Utc::now()),
+                        Ok(()) => record_round_completion(&app, &store),
                         Err(err) => {
                             log::warn!("skill auto-updater: round errored: {err}")
                         }
@@ -47,6 +47,28 @@ pub fn start<R: Runtime>(app: AppHandle<R>, store: Arc<SkillStore>) {
             tokio::time::sleep(POLL_INTERVAL).await;
         }
     });
+}
+
+/// Single source of truth for "a check round just completed": persist
+/// `auto_update_last_run_at`, emit `skills-auto-updated` with the standard
+/// payload so the frontend Settings listener can update its "last checked"
+/// label, and refresh the tray menu so the updates badge reflects new state.
+///
+/// Called by both the background scheduler and the tray's manual
+/// "Check for skill updates" so the user-visible bookkeeping stays in sync
+/// regardless of which surface triggered the check.
+pub fn record_round_completion<R: Runtime>(app: &AppHandle<R>, store: &SkillStore) {
+    let now = Utc::now();
+    write_last_run(store, now);
+    let payload = AutoUpdatePayload {
+        ran_at: now.to_rfc3339(),
+    };
+    if let Err(err) = app.emit(EVENT_AUTO_UPDATED, payload) {
+        log::debug!("skill auto-updater: emit failed: {err}");
+    }
+    if let Err(err) = crate::refresh_tray_menu(app) {
+        log::debug!("skill auto-updater: refresh_tray_menu failed: {err}");
+    }
 }
 
 fn read_interval(store: &SkillStore) -> Option<Duration> {
@@ -95,21 +117,11 @@ fn is_due(last_run: Option<DateTime<Utc>>, interval: Duration) -> bool {
     elapsed >= interval_chrono
 }
 
-async fn run_round<R: Runtime>(app: &AppHandle<R>, store: &Arc<SkillStore>) -> Result<(), String> {
+async fn run_round<R: Runtime>(_app: &AppHandle<R>, store: &Arc<SkillStore>) -> Result<(), String> {
     let store_for_task = store.clone();
     tauri::async_runtime::spawn_blocking(move || run_round_blocking(&store_for_task))
         .await
         .map_err(|err| format!("join error: {err}"))??;
-
-    let payload = AutoUpdatePayload {
-        ran_at: Utc::now().to_rfc3339(),
-    };
-    if let Err(err) = app.emit(EVENT_AUTO_UPDATED, payload) {
-        log::debug!("skill auto-updater: emit failed: {err}");
-    }
-    if let Err(err) = crate::refresh_tray_menu(app) {
-        log::debug!("skill auto-updater: refresh_tray_menu failed: {err}");
-    }
     Ok(())
 }
 

@@ -10,9 +10,13 @@ pub mod core;
 /// Shared flag: when true, CloseRequested should NOT be prevented.
 pub static QUITTING: AtomicBool = AtomicBool::new(false);
 
-/// Guards every tray-initiated mutation (preset apply/remove, manual update check)
-/// so a quick double-click can't fire two batches at once.
-static TRAY_BUSY: std::sync::Mutex<()> = std::sync::Mutex::new(());
+/// Guards concurrent preset apply/remove from the tray so a quick double-click
+/// can't fire two batches at once. Intentionally separate from the
+/// `TRAY_CHECK_UPDATES_RUNNING` flag — update checks only touch
+/// `update_status` while preset apply touches `skill_targets`, so the two are
+/// orthogonal and shouldn't block each other. Sharing the lock would silently
+/// drop preset clicks during long-running update checks.
+static TRAY_PRESET_APPLY_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Tracks whether a manual "Check for skill updates" is currently running so the
 /// tray menu can render a disabled "Checking for updates..." label.
@@ -447,12 +451,21 @@ fn apply_preset_from_tray<R: tauri::Runtime>(
     tauri::async_runtime::spawn(async move {
         let store_for_task = store.clone();
         let preset_id_for_task = preset_id.clone();
-        let result = tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
-            let _guard = match TRAY_BUSY.try_lock() {
+        // Result variants:
+        //   Ok(true)  — the batch actually ran (do success-side effects)
+        //   Ok(false) — skipped because another apply is in-flight or the
+        //               preset/agent set was empty (no real work happened, so
+        //               do NOT emit app-files-changed: that would lie to the
+        //               frontend about state changes that didn't occur)
+        //   Err(_)    — failure inside the batch
+        let result = tauri::async_runtime::spawn_blocking(move || -> Result<bool, String> {
+            let _guard = match TRAY_PRESET_APPLY_LOCK.try_lock() {
                 Ok(guard) => guard,
                 Err(_) => {
-                    log::debug!("Tray busy, skipping preset apply for {preset_id_for_task}");
-                    return Ok(());
+                    log::debug!(
+                        "Another preset apply in flight, ignoring tray click for {preset_id_for_task}"
+                    );
+                    return Ok(false);
                 }
             };
             core::scenario_service::ensure_scenario_exists(&store_for_task, &preset_id_for_task)
@@ -461,7 +474,7 @@ fn apply_preset_from_tray<R: tauri::Runtime>(
                 .get_skill_ids_for_scenario(&preset_id_for_task)
                 .map_err(|e| e.to_string())?;
             if skill_ids.is_empty() {
-                return Ok(());
+                return Ok(false);
             }
             let tool_keys: Vec<String> =
                 core::tool_adapters::enabled_installed_adapters(&store_for_task)
@@ -472,7 +485,7 @@ fn apply_preset_from_tray<R: tauri::Runtime>(
                     .map(|adapter| adapter.key)
                     .collect();
             if tool_keys.is_empty() {
-                return Ok(());
+                return Ok(false);
             }
             core::scenario_service::apply_skills_to_tools(
                 &store_for_task,
@@ -480,17 +493,25 @@ fn apply_preset_from_tray<R: tauri::Runtime>(
                 &tool_keys,
                 mode,
             )
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+            Ok(true)
         })
         .await;
 
         match result {
-            Ok(Ok(())) => {
+            Ok(Ok(true)) => {
                 if let Err(err) = refresh_tray_menu(&app) {
                     log::warn!("Failed to refresh tray menu after preset apply: {err}");
                 }
                 if let Err(err) = app.emit("app-files-changed", ()) {
                     log::warn!("Failed to emit app-files-changed after tray preset apply: {err}");
+                }
+            }
+            Ok(Ok(false)) => {
+                // Refresh the menu so the user still sees fresh status (no
+                // app-files-changed because nothing actually changed on disk).
+                if let Err(err) = refresh_tray_menu(&app) {
+                    log::debug!("Failed to refresh tray menu after skipped preset apply: {err}");
                 }
             }
             Ok(Err(err)) => log::error!("Tray preset apply failed for {preset_id}: {err}"),
@@ -519,10 +540,11 @@ fn check_updates_from_tray<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 
     tauri::async_runtime::spawn(async move {
         let store_for_task = store.clone();
+        // Note: this intentionally does NOT take TRAY_PRESET_APPLY_LOCK.
+        // Update checks only mutate `update_status` columns; preset apply
+        // mutates `skill_targets`. They're orthogonal, and sharing a lock
+        // would silently drop preset clicks made during a long-running check.
         let result = tauri::async_runtime::spawn_blocking(move || {
-            let _guard = TRAY_BUSY
-                .lock()
-                .map_err(|_| "Tray busy lock poisoned".to_string())?;
             let proxy_url = store_for_task.proxy_url();
             let ids: Vec<String> = store_for_task
                 .get_all_skills()
@@ -556,16 +578,25 @@ fn check_updates_from_tray<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 
         match result {
             Ok(Ok(())) => {
-                if let Err(err) = app_handle.emit("skills-auto-updated", ()) {
-                    log::warn!("Failed to emit skills-auto-updated after tray check: {err}");
+                // Route through the shared completion helper so the manual
+                // tray check writes `auto_update_last_run_at`, emits the same
+                // `AutoUpdatePayload { ran_at }` the Settings listener
+                // expects, and prevents the background scheduler from firing
+                // a redundant round immediately after.
+                core::skill_auto_updater::record_round_completion(&app_handle, &store);
+            }
+            Ok(Err(err)) => {
+                log::error!("Tray update check failed: {err}");
+                if let Err(err) = refresh_tray_menu(&app_handle) {
+                    log::warn!("Failed to refresh tray menu after failed update check: {err}");
                 }
             }
-            Ok(Err(err)) => log::error!("Tray update check failed: {err}"),
-            Err(err) => log::error!("Tray update check task panicked: {err}"),
-        }
-
-        if let Err(err) = refresh_tray_menu(&app_handle) {
-            log::warn!("Failed to refresh tray menu after update check: {err}");
+            Err(err) => {
+                log::error!("Tray update check task panicked: {err}");
+                if let Err(err) = refresh_tray_menu(&app_handle) {
+                    log::warn!("Failed to refresh tray menu after update check panic: {err}");
+                }
+            }
         }
     });
 }
