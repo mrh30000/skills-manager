@@ -13,7 +13,6 @@ import {
   RefreshCw,
   FolderSearch,
   FolderInput,
-  ExternalLink,
   Check,
   ChevronLeft,
   ChevronRight,
