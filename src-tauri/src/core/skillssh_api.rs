@@ -440,6 +440,7 @@ mod tests {
         let api = ApiSkill {
             name: Some("tavily".to_string()),
             description: Some("Tavily web search".to_string()),
+            zh_desc: Some("Tavily 联网搜索".to_string()),
             github_url: Some(
                 "https://github.com/openclaw/openclaw/tree/main/extensions/tavily/skills/tavily"
                     .to_string(),
@@ -481,6 +482,7 @@ mod tests {
         let api = ApiSkill {
             name: None,
             description: None,
+            zh_desc: None,
             github_url: Some("https://github.com/foo/bar".to_string()),
             stars: 0,
             forks: 0,
