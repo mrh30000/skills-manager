@@ -22,13 +22,20 @@ import {
   MoreHorizontal,
   Pencil,
   Calendar,
+  GitFork,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { cn } from "../utils";
 import { useApp } from "../context/AppContext";
 import * as api from "../lib/tauri";
-import type { ScanResult, SkillsShSkill, BatchImportResult, GitPreviewResult } from "../lib/tauri";
+import type {
+  ScanResult,
+  SkillsShSkill,
+  SkillCategory,
+  BatchImportResult,
+  GitPreviewResult,
+} from "../lib/tauri";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useSearchParams, useNavigate } from "react-router-dom";
@@ -43,7 +50,7 @@ const MARKET_SEARCH_CACHE_TTL_MS = 120_000;
 const MARKET_SEARCH_CACHE_MAX_ENTRIES = 150;
 
 export function InstallSkills() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { refreshPresets, refreshManagedSkills, managedSkills, openSkillDetailById } = useApp();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -51,6 +58,12 @@ export function InstallSkills() {
   const [marketTab, setMarketTab] = useState<"hot" | "trending" | "alltime">("alltime");
   const [marketQuery, setMarketQuery] = useState("");
   const [marketSourceFilter, setMarketSourceFilter] = useState("all");
+  const [marketCategory, setMarketCategory] = useState<string>("all");
+  const [marketCategories, setMarketCategories] = useState<SkillCategory[]>([]);
+  const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
+  const [categorySearch, setCategorySearch] = useState("");
+  const categoryDropdownRef = useRef<HTMLDivElement | null>(null);
+  const categoryButtonRef = useRef<HTMLButtonElement | null>(null);
   const [marketSkills, setMarketSkills] = useState<SkillsShSkill[]>([]);
   const [marketPage, setMarketPage] = useState(1);
   const [marketSearchLimit, setMarketSearchLimit] = useState(MARKET_SEARCH_STEP);
@@ -133,6 +146,20 @@ export function InstallSkills() {
     }
   }, []);
 
+  // Localize an upstream category name. The marketplace API returns English
+  // names regardless of locale, so we look up `install.categoryNames.<id>`
+  // in the active language; falls back to the API-provided name and finally
+  // to the raw id when no translation exists.
+  const localizeCategoryName = useCallback(
+    (id: string, fallback?: string) => {
+      const key = `install.categoryNames.${id}`;
+      const translated = t(key);
+      if (translated && translated !== key) return translated;
+      return fallback || id;
+    },
+    [t]
+  );
+
   const installedSourceRefs = useMemo(() => {
     const set = new Set<string>();
     for (const skill of managedSkills) {
@@ -175,6 +202,44 @@ export function InstallSkills() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [resetSourceOverflowState, sourceOverflowOpen]);
+
+  // Categories are fetched lazily on first market visit, then cached for the
+  // session. The backend caches the upstream API for an hour, so refreshing
+  // here on every mount would just hit our own cache anyway.
+  useEffect(() => {
+    if (activeTab !== "market") return;
+    if (marketCategories.length > 0) return;
+    let stale = false;
+    api
+      .fetchSkillCategories()
+      .then((result) => {
+        if (stale) return;
+        setMarketCategories(result);
+      })
+      .catch((error) => {
+        // Categories are non-critical — surface only in dev console.
+        console.warn("fetchSkillCategories failed:", error);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [activeTab, marketCategories.length]);
+
+  useEffect(() => {
+    if (!categoryDropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        categoryButtonRef.current?.contains(e.target as Node) ||
+        categoryDropdownRef.current?.contains(e.target as Node)
+      ) {
+        return;
+      }
+      setCategoryDropdownOpen(false);
+      setCategorySearch("");
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [categoryDropdownOpen]);
 
   useEffect(() => {
     const tab = searchParams.get("tab");
@@ -228,13 +293,16 @@ export function InstallSkills() {
     if (activeTab !== "market") return;
 
     const query = debouncedMarketQuery.trim();
+    const category = marketCategory === "all" ? null : marketCategory;
     const loadingMore =
       query.length > 0 &&
       marketSkillsLengthRef.current > 0 &&
       marketSearchLimit > marketSkillsLengthRef.current;
 
     if (query.length > 0 && !loadingMore) {
-      const cacheKey = `${query.toLowerCase()}|${marketSearchLimit}`;
+      // Cache key namespaced by category — switching category mid-search
+      // must not return entries from the previous filter.
+      const cacheKey = `${query.toLowerCase()}|${marketSearchLimit}|cat:${category ?? "all"}`;
       const cached = marketSearchCacheRef.current.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < MARKET_SEARCH_CACHE_TTL_MS) {
         setMarketSkills(cached.data);
@@ -255,15 +323,15 @@ export function InstallSkills() {
 
     let stale = false;
     const request = query
-      ? api.searchSkillssh(query, marketSearchLimit)
-      : api.fetchLeaderboard(marketTab);
+      ? api.searchSkillssh(query, marketSearchLimit, category)
+      : api.fetchLeaderboard(marketTab, category);
 
     request
       .then((result) => {
         if (stale) return;
         setMarketSkills(result);
         if (query.length > 0 && !loadingMore) {
-          const cacheKey = `${query.toLowerCase()}|${marketSearchLimit}`;
+          const cacheKey = `${query.toLowerCase()}|${marketSearchLimit}|cat:${category ?? "all"}`;
           marketSearchCacheRef.current.set(cacheKey, { timestamp: Date.now(), data: result });
           pruneMarketSearchCache();
         }
@@ -285,7 +353,7 @@ export function InstallSkills() {
       });
 
     return () => { stale = true; };
-  }, [activeTab, debouncedMarketQuery, marketReloadKey, marketSearchLimit, marketTab, pruneMarketSearchCache, t]);
+  }, [activeTab, debouncedMarketQuery, marketReloadKey, marketSearchLimit, marketTab, marketCategory, pruneMarketSearchCache, t]);
 
   useEffect(() => {
     if (activeTab === "local" && !scanResult && !scanLoading) {
@@ -794,6 +862,139 @@ export function InstallSkills() {
                       spellCheck={false}
                     />
                   </div>
+
+                  {marketCategories.length > 0 && (
+                    <div className="relative shrink-0">
+                      <button
+                        ref={categoryButtonRef}
+                        type="button"
+                        onClick={() => {
+                          setCategoryDropdownOpen((open) => !open);
+                          setCategorySearch("");
+                        }}
+                        aria-expanded={categoryDropdownOpen}
+                        aria-haspopup="listbox"
+                        className={cn(
+                          "flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-colors lg:w-56",
+                          categoryDropdownOpen || marketCategory !== "all"
+                            ? "border-accent-border bg-accent-bg text-accent-light"
+                            : "border-border-subtle bg-background text-secondary hover:bg-surface-hover"
+                        )}
+                      >
+                        <span className="truncate">
+                          {marketCategory === "all"
+                            ? t("install.filters.allCategories")
+                            : localizeCategoryName(
+                                marketCategory,
+                                marketCategories.find((c) => c.id === marketCategory)?.name
+                              )}
+                        </span>
+                        <ChevronRight
+                          className={cn(
+                            "h-3.5 w-3.5 shrink-0 transition-transform",
+                            categoryDropdownOpen ? "rotate-90" : "rotate-90"
+                          )}
+                        />
+                      </button>
+                      {categoryDropdownOpen && (
+                        <div
+                          ref={categoryDropdownRef}
+                          role="listbox"
+                          className="absolute right-0 top-full z-50 mt-1.5 w-72 overflow-hidden rounded-xl border border-border bg-surface shadow-lg"
+                        >
+                          <div className="border-b border-border-subtle px-2 py-1.5">
+                            <div className="relative">
+                              <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted" />
+                              <input
+                                type="text"
+                                value={categorySearch}
+                                onChange={(e) => setCategorySearch(e.target.value)}
+                                placeholder={t("common.search")}
+                                className="app-input w-full bg-background py-1 pl-6 pr-2 text-[12px]"
+                                autoFocus
+                                autoCapitalize="none"
+                                autoCorrect="off"
+                                spellCheck={false}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Escape") {
+                                    setCategoryDropdownOpen(false);
+                                    setCategorySearch("");
+                                  }
+                                }}
+                              />
+                            </div>
+                          </div>
+                          <div className="max-h-72 overflow-y-auto scrollbar-hide py-1">
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={marketCategory === "all"}
+                              onClick={() => {
+                                setMarketCategory("all");
+                                setMarketSearchLimit(MARKET_SEARCH_STEP);
+                                setCategoryDropdownOpen(false);
+                                setCategorySearch("");
+                              }}
+                              className={cn(
+                                "flex w-full items-center justify-between px-3 py-1.5 text-left text-[13px] transition-colors",
+                                marketCategory === "all"
+                                  ? "bg-accent-bg text-accent-light"
+                                  : "text-secondary hover:bg-surface-hover"
+                              )}
+                            >
+                              <span>{t("install.filters.allCategories")}</span>
+                            </button>
+                            {marketCategories
+                              .filter((c) => {
+                                if (!categorySearch) return true;
+                                const q = categorySearch.toLowerCase();
+                                const localized = localizeCategoryName(c.id, c.name).toLowerCase();
+                                return (
+                                  localized.includes(q) ||
+                                  c.name.toLowerCase().includes(q) ||
+                                  c.id.toLowerCase().includes(q)
+                                );
+                              })
+                              .map((cat) => {
+                                const isActive = marketCategory === cat.id;
+                                return (
+                                  <button
+                                    key={cat.id}
+                                    type="button"
+                                    role="option"
+                                    aria-selected={isActive}
+                                    onClick={() => {
+                                      setMarketCategory(cat.id);
+                                      setMarketSearchLimit(MARKET_SEARCH_STEP);
+                                      setCategoryDropdownOpen(false);
+                                      setCategorySearch("");
+                                    }}
+                                    className={cn(
+                                      "flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-[13px] transition-colors",
+                                      isActive
+                                        ? "bg-accent-bg text-accent-light"
+                                        : "text-secondary hover:bg-surface-hover"
+                                    )}
+                                  >
+                                    <span className="truncate">{localizeCategoryName(cat.id, cat.name)}</span>
+                                    <span
+                                      className={cn(
+                                        "shrink-0 rounded-full border px-1.5 py-0.5 text-[11px] font-medium",
+                                        isActive
+                                          ? "border-accent-border bg-accent-bg text-accent-light"
+                                          : "border-border-subtle bg-background text-muted"
+                                      )}
+                                    >
+                                      {cat.skills_count}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -884,7 +1085,9 @@ export function InstallSkills() {
                                 ? "border-accent-border bg-accent-bg text-accent-light"
                                 : "border-border-subtle bg-background text-muted hover:text-secondary"
                             )}
-                            title={`${sourceOptions.length - visibleSourceCount} more`}
+                            title={t("install.filters.moreSources", {
+                              count: sourceOptions.length - visibleSourceCount,
+                            })}
                             aria-expanded={sourceOverflowOpen}
                             aria-haspopup="listbox"
                           >
@@ -1012,109 +1215,184 @@ export function InstallSkills() {
                 </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {paginatedMarketSkills.map((skill) => {
                       const displayName = skill.name || skill.skill_id;
                       const showSkillId = skill.skill_id.trim() !== displayName.trim();
-                      const owner = skill.source.split("/")[0];
-                      const avatarUrl = `https://github.com/${owner}.png?size=32`;
+                      const owner = skill.author || skill.source.split("/")[0];
+                      // The marketplace ships the author avatar; fall back to the
+                      // GitHub owner avatar when missing so older cached entries
+                      // still render an icon.
+                      const avatarUrl =
+                        skill.author_avatar || `https://github.com/${owner}.png?size=64`;
                       const sourceRef = `${skill.source}/${skill.skill_id}`;
                       const isInstalled = installedSourceRefs.has(sourceRef);
+                      const externalUrl =
+                        skill.github_url || `https://github.com/${skill.source}`;
+                      const formattedDate = skill.updated_at
+                        ? new Date(skill.updated_at).toLocaleDateString(
+                            i18n.language?.startsWith("zh") ? "zh-CN" : "en-US",
+                            { year: "numeric", month: "2-digit", day: "2-digit" }
+                          )
+                        : null;
+                      const formatCount = (count: number): string =>
+                        count >= 1_000_000
+                          ? `${(count / 1_000_000).toFixed(1)}M`
+                          : count >= 1_000
+                            ? `${(count / 1_000).toFixed(1)}K`
+                            : `${count}`;
+                      const skillCategoryNames = skill.categories
+                        .map((catId) => {
+                          const cat = marketCategories.find((c) => c.id === catId);
+                          return localizeCategoryName(catId, cat?.name);
+                        })
+                        .filter((name): name is string => Boolean(name));
 
                       return (
                       <div
                         key={skill.id}
-                        className="app-panel flex flex-col gap-2 p-3 transition-colors hover:border-border"
+                        className="app-panel group flex flex-col justify-between rounded-2xl p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-border hover:shadow-md"
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex min-w-0 flex-1 items-center gap-2">
-                            <img
-                              src={avatarUrl}
-                              alt={owner}
-                              className="h-6 w-6 shrink-0 rounded-full border border-border-subtle"
-                              loading="lazy"
-                            />
-                            <div className="min-w-0">
-                              <h3 className="truncate text-[13px] font-semibold text-secondary">
-                                {displayName}
-                              </h3>
-                              {showSkillId ? (
-                                <p className="truncate text-[13px] leading-4 text-muted">{skill.skill_id}</p>
-                              ) : null}
+                        {/* Header: author + actions */}
+                        <div>
+                          <div className="flex items-center justify-between gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setMarketSourceFilter(skill.source)}
+                              disabled={marketSourceFilter === skill.source}
+                              title={t("install.onlyThisContributor")}
+                              className={cn(
+                                "flex min-w-0 items-center gap-2 rounded-md transition-colors",
+                                marketSourceFilter === skill.source
+                                  ? "cursor-default"
+                                  : "hover:opacity-80"
+                              )}
+                            >
+                              <img
+                                src={avatarUrl}
+                                alt={owner}
+                                className="h-6 w-6 shrink-0 rounded-full border border-border-subtle"
+                                loading="lazy"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).src =
+                                    "https://avatars.githubusercontent.com/u/9919?v=4";
+                                }}
+                              />
+                              <span className="truncate text-[12px] font-semibold text-muted">
+                                {skill.author || skill.source}
+                              </span>
+                            </button>
+
+                            <div className="flex shrink-0 items-center gap-1">
+                              <button
+                                onClick={() => openUrl(externalUrl)}
+                                className="flex h-7 w-7 items-center justify-center rounded-lg border border-border-subtle bg-surface text-muted transition-colors hover:bg-surface-hover hover:text-secondary"
+                                title={t("install.viewOnWeb")}
+                                aria-label={t("install.viewOnWeb")}
+                              >
+                                <Github className="h-3.5 w-3.5" />
+                              </button>
+                              {isInstalled ? (
+                                <span
+                                  className="flex h-7 items-center gap-1 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-1.5 text-emerald-400"
+                                  title={t("install.installed")}
+                                >
+                                  <Check className="h-3.5 w-3.5" />
+                                </span>
+                              ) : installing === skill.id ? (
+                                <button
+                                  onClick={() =>
+                                    handleCancelInstall(`${skill.source}/${skill.skill_id}`)
+                                  }
+                                  className="flex h-7 items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-1.5 text-[11px] font-medium text-red-400 transition-colors hover:bg-red-500/20"
+                                  title={t("install.cancel")}
+                                  aria-label={t("install.cancel")}
+                                >
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  {t("install.cancel")}
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleInstallSkillssh(skill)}
+                                  disabled={installing !== null}
+                                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-accent-border bg-accent-dark text-white transition-colors hover:bg-accent disabled:opacity-50"
+                                  title={t("install.oneClickInstall")}
+                                  aria-label={t("install.oneClickInstall")}
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                </button>
+                              )}
                             </div>
                           </div>
 
-                          <div className="flex shrink-0 items-center gap-1">
-                            <button
-                              onClick={() => openUrl(`https://skills.sh/${skill.source}/${skill.skill_id}`)}
-                              className="rounded-[5px] p-1 text-muted transition-colors hover:bg-surface-hover hover:text-secondary"
-                              title={t("install.viewOnWeb")}
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </button>
-                            {isInstalled ? (
-                              <span
-                                className="rounded-[5px] border border-emerald-500/20 bg-emerald-500/10 p-1 text-emerald-400"
-                                title={t("install.installed")}
-                              >
-                                <Check className="h-3.5 w-3.5" />
-                              </span>
-                            ) : installing === skill.id ? (
-                              <button
-                                onClick={() => handleCancelInstall(`${skill.source}/${skill.skill_id}`)}
-                                className="inline-flex items-center gap-1 rounded-[5px] border border-red-500/30 bg-red-500/10 px-1.5 py-1 text-red-400 transition-colors hover:bg-red-500/20"
-                                title={t("install.cancel")}
-                                aria-label={t("install.cancel")}
-                              >
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                <span className="text-[11px] leading-none font-medium">
-                                  {t("install.cancel")}
-                                </span>
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleInstallSkillssh(skill)}
-                                disabled={installing !== null}
-                                className="rounded-[5px] border border-accent-border bg-accent-dark p-1 text-white transition-colors hover:bg-accent disabled:opacity-50"
-                                title={t("install.oneClickInstall")}
-                              >
-                                <Plus className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-                          </div>
+                          {/* Title */}
+                          <h3 className="mt-3 truncate text-[14px] font-semibold tracking-tight text-secondary">
+                            {displayName}
+                          </h3>
+                          {showSkillId ? (
+                            <p className="mt-0.5 truncate text-[11px] text-faint">
+                              {skill.skill_id}
+                            </p>
+                          ) : null}
+
+                          {/* Description */}
+                          {(() => {
+                            const isZh = i18n.language?.startsWith("zh");
+                            const desc = isZh
+                              ? skill.zh_desc || skill.description
+                              : skill.description;
+                            return desc ? (
+                              <p className="mt-2 line-clamp-3 text-[12px] leading-relaxed text-muted">
+                                {desc}
+                              </p>
+                            ) : null;
+                          })()}
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => setMarketSourceFilter(skill.source)}
-                            disabled={marketSourceFilter === skill.source}
-                            title={t("install.onlyThisContributor")}
-                            className={cn(
-                              "rounded-[5px] bg-accent-bg px-1.5 py-0.5 text-[13px] leading-4 font-medium text-accent-light transition-colors",
-                              marketSourceFilter === skill.source
-                                ? "cursor-default opacity-90"
-                                : "hover:bg-accent-bg/80"
-                            )}
-                          >
-                            @{skill.source}
-                          </button>
-                          {marketTab === "alltime" && skill.installs > 0 && (
-                            <span className="inline-flex items-center gap-1 rounded-[5px] border border-border-subtle bg-background px-1.5 py-0.5 text-[13px] leading-4 text-muted">
-                              <DownloadCloud className="h-3 w-3" />
-                              {skill.installs >= 1_000_000
-                                ? `${(skill.installs / 1_000_000).toFixed(1)}M`
-                                : skill.installs >= 1_000
-                                  ? `${(skill.installs / 1_000).toFixed(1)}K`
-                                  : skill.installs}
-                            </span>
-                          )}
-                          {isInstalled ? (
-                            <span className="inline-flex items-center gap-1 rounded-[5px] border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[13px] leading-4 font-medium text-emerald-400">
-                              <Check className="h-3 w-3" />
-                              {t("install.installed")}
-                            </span>
+                        {/* Footer: categories + stats */}
+                        <div className="mt-4">
+                          {/* Categories */}
+                          {skillCategoryNames.length > 0 ? (
+                            <div className="mb-3 flex flex-wrap gap-1">
+                              {skillCategoryNames.slice(0, 3).map((catName, idx) => (
+                                <span
+                                  key={`${catName}-${idx}`}
+                                  className="inline-flex items-center rounded-md bg-surface-hover px-1.5 py-0.5 text-[10px] font-medium text-tertiary"
+                                >
+                                  {catName}
+                                </span>
+                              ))}
+                              {skillCategoryNames.length > 3 ? (
+                                <span className="inline-flex items-center rounded-md bg-surface-hover px-1.5 py-0.5 text-[10px] font-medium text-faint">
+                                  +{skillCategoryNames.length - 3}
+                                </span>
+                              ) : null}
+                            </div>
                           ) : null}
+
+                          {/* Divider */}
+                          <div className="mb-2 h-px w-full bg-border-subtle" />
+
+                          {/* Stats: Stars / Forks / Update */}
+                          <div className="flex items-center justify-between text-[11px] font-medium text-muted">
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-1" title={t("install.stats.stars")}>
+                                <Star className="h-3.5 w-3.5 text-amber-500" fill="currentColor" />
+                                <span>{formatCount(skill.installs)}</span>
+                              </div>
+                              <div className="flex items-center gap-1" title={t("install.stats.forks")}>
+                                <GitFork className="h-3.5 w-3.5 text-faint" />
+                                <span>{formatCount(skill.forks)}</span>
+                              </div>
+                            </div>
+
+                            {formattedDate ? (
+                              <div className="flex items-center gap-1" title={formattedDate}>
+                                <Calendar className="h-3 w-3 text-faint" />
+                                <span>{formattedDate}</span>
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                       );

@@ -288,6 +288,9 @@
     "filters": {
       "source": "Source",
       "allSources": "All sources",
+      "category": "Category",
+      "allCategories": "All categories",
+      "moreSources": "{{count}} more sources",
       "filteredCount": "{{count}} loaded results"
     },
     "noResults": {
@@ -337,6 +340,11 @@
     "gitAlreadyInstalled": "\"{{name}}\" is already installed. Reinstalling will update it.",
     "onlyThisContributor": "Only this contributor",
     "installClone": "Clone & Preview",
+    "gitReinstall": "Reinstall & Update",
+    "stats": {
+      "stars": "Stars",
+      "forks": "Forks"
+    },
     "gitPreview": {
       "title": "Select Skills to Import",
       "description": "The following skills were found in the repository. Rename them if needed, then confirm.",

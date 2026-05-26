@@ -1233,7 +1233,10 @@ fn run_search(
 ) -> anyhow::Result<Vec<SearchHit>> {
     let proxy_url = store.proxy_url();
     let bounded = limit.unwrap_or(60).clamp(1, 300);
-    let hits = skillssh_api::search_skills(query, bounded, proxy_url.as_deref())?;
+    // CLI search currently doesn't expose a category filter — pass `None` so
+    // the upstream API behaves as before. If we add a `--category` flag we
+    // can plumb it through here.
+    let hits = skillssh_api::search_skills(query, bounded, proxy_url.as_deref(), None)?;
     Ok(hits
         .into_iter()
         .map(|s| {

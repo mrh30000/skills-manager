@@ -103,7 +103,29 @@ export interface SkillsShSkill {
   skill_id: string;
   name: string;
   source: string;
+  /** Repository star count from the marketplace API. The field is named
+   * `installs` for backward compatibility with the prior skills.sh shape. */
   installs: number;
+  description: string | null;
+  /** Chinese description from the marketplace API. The InstallSkills view
+   * prefers this over `description` when the active locale is zh / zh-TW. */
+  zh_desc: string | null;
+  forks: number;
+  updated_at: string | null;
+  author: string | null;
+  author_avatar: string | null;
+  github_url: string | null;
+  branch: string | null;
+  subpath: string | null;
+  /** Category ids assigned to this skill by the upstream marketplace.
+   * Empty array when uncategorised. */
+  categories: string[];
+}
+
+export interface SkillCategory {
+  id: string;
+  name: string;
+  skills_count: number;
 }
 
 export interface SyncHealth {
@@ -352,14 +374,25 @@ export const importAllDiscovered = () =>
 
 // ── Browse ──
 
-export const fetchLeaderboard = (board: string) =>
-  invoke<SkillsShSkill[]>("fetch_leaderboard", { board });
+export const fetchLeaderboard = (board: string, category?: string | null) =>
+  invoke<SkillsShSkill[]>("fetch_leaderboard", {
+    board,
+    category: category ?? null,
+  });
 
-export const searchSkillssh = (query: string, limit?: number) =>
+export const searchSkillssh = (
+  query: string,
+  limit?: number,
+  category?: string | null,
+) =>
   invoke<SkillsShSkill[]>("search_skillssh", {
     query,
     limit: limit ?? null,
+    category: category ?? null,
   });
+
+export const fetchSkillCategories = () =>
+  invoke<SkillCategory[]>("fetch_skill_categories");
 
 // ── Settings ──
 
