@@ -1,5 +1,6 @@
 name: Build
 
+# CI workflow: build Tauri installer for all platforms
 on:
   push:
     branches:
